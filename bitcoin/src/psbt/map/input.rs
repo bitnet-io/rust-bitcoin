@@ -1,26 +1,24 @@
 // SPDX-License-Identifier: CC0-1.0
 
-use core::convert::TryFrom;
+use crate::prelude::*;
+
 use core::fmt;
 use core::str::FromStr;
+use core::convert::TryFrom;
 
-use hashes::{self, hash160, ripemd160, sha256, sha256d};
 use secp256k1::XOnlyPublicKey;
 
-use crate::bip32::KeySource;
 use crate::blockdata::script::ScriptBuf;
-use crate::blockdata::transaction::{Transaction, TxOut};
 use crate::blockdata::witness::Witness;
-use crate::crypto::key::PublicKey;
+use crate::blockdata::transaction::{Transaction, TxOut};
 use crate::crypto::{ecdsa, taproot};
-use crate::prelude::*;
+use crate::crypto::key::PublicKey;
+use crate::hashes::{self, hash160, ripemd160, sha256, sha256d};
+use crate::bip32::KeySource;
 use crate::psbt::map::Map;
 use crate::psbt::serialize::Deserialize;
 use crate::psbt::{self, error, raw, Error};
-use crate::sighash::{
-    EcdsaSighashType, InvalidSighashTypeError, NonStandardSighashTypeError, SighashTypeParseError,
-    TapSighashType,
-};
+use crate::sighash::{self, NonStandardSighashType, SighashTypeParseError, EcdsaSighashType, TapSighashType};
 use crate::taproot::{ControlBlock, LeafVersion, TapLeafHash, TapNodeHash};
 
 /// Type: Non-Witness UTXO PSBT_IN_NON_WITNESS_UTXO = 0x00
@@ -71,11 +69,11 @@ const PSBT_IN_PROPRIETARY: u8 = 0xFC;
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct Input {
     /// The non-witness transaction this input spends from. Should only be
-    /// `Option::Some` for inputs which spend non-segwit outputs or
+    /// [std::option::Option::Some] for inputs which spend non-segwit outputs or
     /// if it is unknown whether an input spends a segwit output.
     pub non_witness_utxo: Option<Transaction>,
     /// The transaction output this input spends from. Should only be
-    /// `Option::Some` for inputs which spend segwit outputs,
+    /// [std::option::Option::Some] for inputs which spend segwit outputs,
     /// including P2SH embedded ones.
     pub witness_utxo: Option<TxOut>,
     /// A map from public keys to their corresponding signature as would be
@@ -134,6 +132,7 @@ pub struct Input {
     pub unknown: BTreeMap<raw::Key, Vec<u8>>,
 }
 
+
 /// A Signature hash type for the corresponding input. As of taproot upgrade, the signature hash
 /// type can be either [`EcdsaSighashType`] or [`TapSighashType`] but it is not possible to know
 /// directly which signature hash type the user is dealing with. Therefore, the user is responsible
@@ -142,7 +141,7 @@ pub struct Input {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct PsbtSighashType {
-    pub(in crate::psbt) inner: u32,
+    pub (in crate::psbt) inner: u32,
 }
 
 impl fmt::Display for PsbtSighashType {
@@ -173,7 +172,7 @@ impl FromStr for PsbtSighashType {
             return Ok(PsbtSighashType { inner });
         }
 
-        Err(SighashTypeParseError { unrecognized: s.to_owned() })
+        Err(SighashTypeParseError{ unrecognized: s.to_owned() })
     }
 }
 impl From<EcdsaSighashType> for PsbtSighashType {
@@ -191,15 +190,15 @@ impl From<TapSighashType> for PsbtSighashType {
 impl PsbtSighashType {
     /// Returns the [`EcdsaSighashType`] if the [`PsbtSighashType`] can be
     /// converted to one.
-    pub fn ecdsa_hash_ty(self) -> Result<EcdsaSighashType, NonStandardSighashTypeError> {
+    pub fn ecdsa_hash_ty(self) -> Result<EcdsaSighashType, NonStandardSighashType> {
         EcdsaSighashType::from_standard(self.inner)
     }
 
     /// Returns the [`TapSighashType`] if the [`PsbtSighashType`] can be
     /// converted to one.
-    pub fn taproot_hash_ty(self) -> Result<TapSighashType, InvalidSighashTypeError> {
+    pub fn taproot_hash_ty(self) -> Result<TapSighashType, sighash::Error> {
         if self.inner > 0xffu32 {
-            Err(InvalidSighashTypeError(self.inner))
+            Err(sighash::Error::InvalidSighashType(self.inner))
         } else {
             TapSighashType::from_consensus_u8(self.inner as u8)
         }
@@ -209,12 +208,17 @@ impl PsbtSighashType {
     ///
     /// Allows construction of a non-standard or non-valid sighash flag
     /// ([`EcdsaSighashType`], [`TapSighashType`] respectively).
-    pub fn from_u32(n: u32) -> PsbtSighashType { PsbtSighashType { inner: n } }
+    pub fn from_u32(n: u32) -> PsbtSighashType {
+        PsbtSighashType { inner: n }
+    }
+
 
     /// Converts [`PsbtSighashType`] to a raw `u32` sighash flag.
     ///
     /// No guarantees are made as to the standardness or validity of the returned value.
-    pub fn to_u32(self) -> u32 { self.inner }
+    pub fn to_u32(self) -> u32 {
+        self.inner
+    }
 }
 
 impl Input {
@@ -224,7 +228,7 @@ impl Input {
     /// # Errors
     ///
     /// If the `sighash_type` field is set to a non-standard ECDSA sighash value.
-    pub fn ecdsa_hash_ty(&self) -> Result<EcdsaSighashType, NonStandardSighashTypeError> {
+    pub fn ecdsa_hash_ty(&self) -> Result<EcdsaSighashType, NonStandardSighashType> {
         self.sighash_type
             .map(|sighash_type| sighash_type.ecdsa_hash_ty())
             .unwrap_or(Ok(EcdsaSighashType::All))
@@ -236,14 +240,17 @@ impl Input {
     /// # Errors
     ///
     /// If the `sighash_type` field is set to a invalid Taproot sighash value.
-    pub fn taproot_hash_ty(&self) -> Result<TapSighashType, InvalidSighashTypeError> {
+    pub fn taproot_hash_ty(&self) -> Result<TapSighashType, sighash::Error> {
         self.sighash_type
             .map(|sighash_type| sighash_type.taproot_hash_ty())
             .unwrap_or(Ok(TapSighashType::Default))
     }
 
     pub(super) fn insert_pair(&mut self, pair: raw::Pair) -> Result<(), Error> {
-        let raw::Pair { key: raw_key, value: raw_value } = pair;
+        let raw::Pair {
+            key: raw_key,
+            value: raw_value,
+        } = pair;
 
         match raw_key.type_value {
             PSBT_IN_NON_WITNESS_UTXO => {
@@ -292,36 +299,16 @@ impl Input {
                 }
             }
             PSBT_IN_RIPEMD160 => {
-                psbt_insert_hash_pair(
-                    &mut self.ripemd160_preimages,
-                    raw_key,
-                    raw_value,
-                    error::PsbtHash::Ripemd,
-                )?;
+                psbt_insert_hash_pair(&mut self.ripemd160_preimages, raw_key, raw_value, error::PsbtHash::Ripemd)?;
             }
             PSBT_IN_SHA256 => {
-                psbt_insert_hash_pair(
-                    &mut self.sha256_preimages,
-                    raw_key,
-                    raw_value,
-                    error::PsbtHash::Sha256,
-                )?;
+                psbt_insert_hash_pair(&mut self.sha256_preimages, raw_key, raw_value, error::PsbtHash::Sha256)?;
             }
             PSBT_IN_HASH160 => {
-                psbt_insert_hash_pair(
-                    &mut self.hash160_preimages,
-                    raw_key,
-                    raw_value,
-                    error::PsbtHash::Hash160,
-                )?;
+                psbt_insert_hash_pair(&mut self.hash160_preimages, raw_key, raw_value, error::PsbtHash::Hash160)?;
             }
             PSBT_IN_HASH256 => {
-                psbt_insert_hash_pair(
-                    &mut self.hash256_preimages,
-                    raw_key,
-                    raw_value,
-                    error::PsbtHash::Hash256,
-                )?;
+                psbt_insert_hash_pair(&mut self.hash256_preimages, raw_key, raw_value, error::PsbtHash::Hash256)?;
             }
             PSBT_IN_TAP_KEY_SIG => {
                 impl_psbt_insert_pair! {
@@ -358,7 +345,7 @@ impl Input {
                 match self.proprietary.entry(key) {
                     btree_map::Entry::Vacant(empty_key) => {
                         empty_key.insert(raw_value);
-                    }
+                    },
                     btree_map::Entry::Occupied(_) => return Err(Error::DuplicateKey(raw_key)),
                 }
             }
@@ -484,11 +471,17 @@ impl Map for Input {
             rv.push(self.tap_merkle_root, PSBT_IN_TAP_MERKLE_ROOT)
         }
         for (key, value) in self.proprietary.iter() {
-            rv.push(raw::Pair { key: key.to_key(), value: value.clone() });
+            rv.push(raw::Pair {
+                key: key.to_key(),
+                value: value.clone(),
+            });
         }
 
         for (key, value) in self.unknown.iter() {
-            rv.push(raw::Pair { key: key.clone(), value: value.clone() });
+            rv.push(raw::Pair {
+                key: key.clone(),
+                value: value.clone(),
+            });
         }
 
         rv
@@ -576,7 +569,7 @@ mod test {
         let back = PsbtSighashType::from_str(&s).unwrap();
 
         assert_eq!(back, sighash);
-        assert_eq!(back.ecdsa_hash_ty(), Err(NonStandardSighashTypeError(nonstd)));
-        assert_eq!(back.taproot_hash_ty(), Err(InvalidSighashTypeError(nonstd)));
+        assert_eq!(back.ecdsa_hash_ty(), Err(NonStandardSighashType(nonstd)));
+        assert_eq!(back.taproot_hash_ty(), Err(sighash::Error::InvalidSighashType(nonstd)));
     }
 }

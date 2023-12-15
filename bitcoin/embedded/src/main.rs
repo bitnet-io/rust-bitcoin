@@ -8,6 +8,7 @@ extern crate bitcoin;
 
 use alloc::string::ToString;
 use alloc::vec;
+use core::alloc::Layout;
 use core::panic::PanicInfo;
 
 use alloc_cortex_m::CortexMHeap;
@@ -16,6 +17,7 @@ use bitcoin::{Address, Network, PrivateKey};
 use bitcoin::secp256k1::ffi::types::AlignedType;
 use bitcoin::secp256k1::Secp256k1;
 
+use cortex_m::asm;
 use cortex_m_rt::entry;
 use cortex_m_semihosting::{debug, hprintln};
 
@@ -51,6 +53,16 @@ fn main() -> ! {
     // exit QEMU
     // NOTE do not run this on hardware; it can corrupt OpenOCD state
     debug::exit(debug::EXIT_SUCCESS);
+
+    loop {}
+}
+
+// define what happens in an Out Of Memory (OOM) condition
+#[alloc_error_handler]
+fn alloc_error(_layout: Layout) -> ! {
+    hprintln!("alloc error").unwrap();
+    debug::exit(debug::EXIT_FAILURE);
+    asm::bkpt();
 
     loop {}
 }

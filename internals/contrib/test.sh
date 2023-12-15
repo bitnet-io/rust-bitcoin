@@ -17,28 +17,28 @@ fi
 export CARGO_TERM_VERBOSE=true
 
 # Defaults / sanity checks
-cargo --locked build
-cargo --locked test
+cargo build
+cargo test
 
 if [ "$DO_LINT" = true ]
 then
-    cargo clippy --locked --all-features --all-targets -- -D warnings
+    cargo clippy --all-features --all-targets -- -D warnings
 fi
 
 if [ "$DO_FEATURE_MATRIX" = true ]; then
     # No features
-    cargo build --locked --no-default-features
-    cargo test --locked --no-default-features
+    cargo build --no-default-features
+    cargo test --no-default-features
 
     # All features
-    cargo build --locked --no-default-features --features="$FEATURES"
-    cargo test --locked --no-default-features --features="$FEATURES"
+    cargo build --no-default-features --features="$FEATURES"
+    cargo test --no-default-features --features="$FEATURES"
 
     # Single features
     for feature in ${FEATURES}
     do
-        cargo build --locked --no-default-features --features="$feature"
-        cargo test --locked --no-default-features --features="$feature"
+        cargo build --no-default-features --features="$feature"
+        cargo test --no-default-features --features="$feature"
     done
 fi
 
@@ -50,7 +50,7 @@ fi
 # Build the docs with a stable toolchain, in unison with the DO_DOCSRS command
 # above this checks that we feature guarded docs imports correctly.
 if [ "$DO_DOCS" = true ]; then
-    RUSTDOCFLAGS="-D warnings" cargo +stable doc --locked --all-features
+    RUSTDOCFLAGS="-D warnings" cargo +stable doc --all-features
 fi
 
 # Run formatter if told to.

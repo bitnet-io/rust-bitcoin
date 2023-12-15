@@ -1,4 +1,13 @@
-ignore = []
+# Eventually this shoud be: ignore = []
+ignore = [
+       "bitcoin/src/blockdata",
+       "bitcoin/src/consensus",
+       "bitcoin/src/crypto",
+       "bitcoin/src/psbt",
+       "bitcoin/src/util",
+       "hashes",
+]
+
 hard_tabs = false
 tab_spaces = 4
 newline_style = "Auto"

@@ -1,4 +1,16 @@
-// SPDX-License-Identifier: CC0-1.0
+// Bitcoin Hashes Library
+// Written in 2018 by
+//   Andrew Poelstra <apoelstra@wpsoftware.net>
+//
+// To the extent possible under law, the author(s) have dedicated all
+// copyright and related and neighboring rights to this software to
+// the public domain worldwide. This software is distributed without
+// any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication
+// along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+//
 
 //! Rust hashes library.
 //!
@@ -67,38 +79,28 @@
 
 // Coding conventions
 #![warn(missing_docs)]
+
 // Experimental features we need.
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(bench, feature(test))]
+
 // In general, rust is absolutely horrid at supporting users doing things like,
 // for example, compiling Rust code for real environments. Disable useless lints
 // that don't do anything but annoy us and cant actually ever be resolved.
 #![allow(bare_trait_objects)]
 #![allow(ellipsis_inclusive_range_patterns)]
+
 #![cfg_attr(all(not(test), not(feature = "std")), no_std)]
+
 // Instead of littering the codebase for non-fuzzing code just globally allow.
-#![cfg_attr(hashes_fuzz, allow(dead_code, unused_imports))]
-// Exclude clippy lints we don't think are valuable
-#![allow(clippy::needless_question_mark)] // https://github.com/rust-bitcoin/rust-bitcoin/pull/2134
+#![cfg_attr(fuzzing, allow(dead_code, unused_imports))]
 
-#[cfg(all(not(test), not(feature = "std"), feature = "core2"))]
-extern crate actual_core2 as core2;
-#[cfg(all(feature = "alloc", not(feature = "std")))]
-extern crate alloc;
-#[cfg(any(test, feature = "std"))]
-extern crate core;
-
-#[cfg(feature = "serde")]
-/// A generic serialization/deserialization framework.
-pub extern crate serde;
-
-#[cfg(all(test, feature = "serde"))]
-extern crate serde_test;
-#[cfg(bench)]
-extern crate test;
-
-/// Re-export the `hex-conservative` crate.
-pub extern crate hex;
+#[cfg(bench)] extern crate test;
+#[cfg(any(test, feature = "std"))] extern crate core;
+#[cfg(feature = "core2")] extern crate core2;
+#[cfg(all(feature = "alloc", not(feature = "std")))] extern crate alloc;
+#[cfg(feature = "serde")] pub extern crate serde;
+#[cfg(all(test,feature = "serde"))] extern crate serde_test;
 
 #[doc(hidden)]
 pub mod _export {
@@ -109,35 +111,30 @@ pub mod _export {
 }
 
 #[cfg(feature = "schemars")]
-extern crate schemars;
+extern crate actual_schemars as schemars;
 
 mod internal_macros;
-#[macro_use]
-mod util;
-#[macro_use]
-pub mod serde_macros;
-pub mod cmp;
+#[macro_use] mod util;
+#[macro_use] pub mod serde_macros;
+#[cfg(any(feature = "std", feature = "core2"))] mod impls;
+pub mod error;
+pub mod hex;
 pub mod hash160;
 pub mod hmac;
-#[cfg(any(test, feature = "std", feature = "core2"))]
-mod impls;
 pub mod ripemd160;
 pub mod sha1;
 pub mod sha256;
 pub mod sha256d;
 pub mod sha256t;
+pub mod siphash24;
 pub mod sha512;
 pub mod sha512_256;
-pub mod siphash24;
+pub mod cmp;
 
 use core::{borrow, fmt, hash, ops};
-// You get I/O if you enable "std" or "core2" (as well as during testing).
-#[cfg(any(test, feature = "std"))]
-use std::io;
 
-#[cfg(all(not(test), not(feature = "std"), feature = "core2"))]
-use core2::io;
 pub use hmac::{Hmac, HmacEngine};
+pub use error::Error;
 
 /// A hashing engine which bytes can be serialized into.
 pub trait HashEngine: Clone + Default {
@@ -159,23 +156,14 @@ pub trait HashEngine: Clone + Default {
 }
 
 /// Trait which applies to hashes of all types.
-pub trait Hash:
-    Copy
-    + Clone
-    + PartialEq
-    + Eq
-    + PartialOrd
-    + Ord
-    + hash::Hash
-    + fmt::Debug
-    + fmt::Display
-    + fmt::LowerHex
-    + ops::Index<ops::RangeFull, Output = [u8]>
-    + ops::Index<ops::RangeFrom<usize>, Output = [u8]>
-    + ops::Index<ops::RangeTo<usize>, Output = [u8]>
-    + ops::Index<ops::Range<usize>, Output = [u8]>
-    + ops::Index<usize, Output = u8>
-    + borrow::Borrow<[u8]>
+pub trait Hash: Copy + Clone + PartialEq + Eq + PartialOrd + Ord +
+    hash::Hash + fmt::Debug + fmt::Display + fmt::LowerHex +
+    ops::Index<ops::RangeFull, Output = [u8]> +
+    ops::Index<ops::RangeFrom<usize>, Output = [u8]> +
+    ops::Index<ops::RangeTo<usize>, Output = [u8]> +
+    ops::Index<ops::Range<usize>, Output = [u8]> +
+    ops::Index<usize, Output = u8> +
+    borrow::Borrow<[u8]>
 {
     /// A hashing engine which bytes can be serialized into. It is expected
     /// to implement the `io::Write` trait, and to never return errors under
@@ -186,7 +174,9 @@ pub trait Hash:
     type Bytes: hex::FromHex + Copy;
 
     /// Constructs a new engine.
-    fn engine() -> Self::Engine { Self::Engine::default() }
+    fn engine() -> Self::Engine {
+        Self::Engine::default()
+    }
 
     /// Produces a hash from the current state of a given engine.
     fn from_engine(e: Self::Engine) -> Self;
@@ -195,7 +185,7 @@ pub trait Hash:
     const LEN: usize;
 
     /// Copies a byte slice into a hash object.
-    fn from_slice(sl: &[u8]) -> Result<Self, FromSliceError>;
+    fn from_slice(sl: &[u8]) -> Result<Self, Error>;
 
     /// Hashes some bytes.
     fn hash(data: &[u8]) -> Self {
@@ -226,28 +216,9 @@ pub trait Hash:
     fn all_zeros() -> Self;
 }
 
-/// Attempted to create a hash from an invalid length slice.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct FromSliceError {
-    expected: usize,
-    got: usize,
-}
-
-impl fmt::Display for FromSliceError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "invalid slice length {} (expected {})", self.got, self.expected)
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for FromSliceError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{sha256d, Hash};
+    use crate::{Hash, sha256d};
 
     hash_newtype! {
         /// A test newtype

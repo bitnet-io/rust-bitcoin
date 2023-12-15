@@ -1,3 +1,4 @@
+// Written in 2014 by Andrew Poelstra <apoelstra@wpsoftware.net>
 // SPDX-License-Identifier: CC0-1.0
 
 //! Internal macros.
@@ -45,13 +46,37 @@ macro_rules! impl_consensus_encoding {
 }
 pub(crate) use impl_consensus_encoding;
 
+/// Marks the function const in Rust 1.46.0
+macro_rules! maybe_const_fn {
+    ($(#[$attr:meta])* $vis:vis fn $name:ident($($args:tt)*) -> $ret:ty $body:block) => {
+        #[cfg(rust_v_1_46)]
+        $(#[$attr])*
+        $vis const fn $name($($args)*) -> $ret $body
+
+        #[cfg(not(rust_v_1_46))]
+        $(#[$attr])*
+        $vis fn $name($($args)*) -> $ret $body
+    }
+}
+pub(crate) use maybe_const_fn;
+// We use test_macros module to keep things organised, re-export everything for ease of use.
+#[cfg(test)]
+pub(crate) use test_macros::*;
+
+#[cfg(test)]
+mod test_macros {
+
+    macro_rules! hex (($hex:expr) => (<Vec<u8> as hashes::hex::FromHex>::from_hex($hex).unwrap()));
+    pub(crate) use hex;
+}
+
 /// Implements several traits for byte-based newtypes.
 /// Implements:
 /// - core::fmt::LowerHex
 /// - core::fmt::UpperHex
 /// - core::fmt::Display
 /// - core::str::FromStr
-/// - hex::FromHex
+/// - hashes::hex::FromHex
 macro_rules! impl_bytes_newtype {
     ($t:ident, $len:literal) => {
         impl $t {
@@ -73,14 +98,14 @@ macro_rules! impl_bytes_newtype {
 
         impl core::fmt::LowerHex for $t {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                use $crate::hex::{display, Case};
+                use bitcoin_internals::hex::{display, Case};
                 display::fmt_hex_exact!(f, $len, &self.0, Case::Lower)
             }
         }
 
         impl core::fmt::UpperHex for $t {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                use $crate::hex::{display, Case};
+                use bitcoin_internals::hex::{display, Case};
                 display::fmt_hex_exact!(f, $len, &self.0, Case::Upper)
             }
         }
@@ -97,25 +122,34 @@ macro_rules! impl_bytes_newtype {
             }
         }
 
-        impl $crate::hex::FromHex for $t {
-            type Err = $crate::hex::HexToArrayError;
-
-            fn from_byte_iter<I>(iter: I) -> Result<Self, $crate::hex::HexToArrayError>
+        impl $crate::hashes::hex::FromHex for $t {
+            fn from_byte_iter<I>(iter: I) -> Result<Self, $crate::hashes::hex::Error>
             where
-                I: core::iter::Iterator<Item = Result<u8, $crate::hex::HexToBytesError>>
+                I: core::iter::Iterator<Item = Result<u8, $crate::hashes::hex::Error>>
                     + core::iter::ExactSizeIterator
                     + core::iter::DoubleEndedIterator,
             {
-                Ok($t($crate::hex::FromHex::from_byte_iter(iter)?))
+                if iter.len() == $len {
+                    let mut ret = [0; $len];
+                    for (n, byte) in iter.enumerate() {
+                        ret[n] = byte?;
+                    }
+                    Ok($t(ret))
+                } else {
+                    Err($crate::hashes::hex::Error::InvalidLength(2 * $len, 2 * iter.len()))
+                }
             }
         }
 
         impl core::str::FromStr for $t {
-            type Err = $crate::hex::HexToArrayError;
-            fn from_str(s: &str) -> Result<Self, Self::Err> { $crate::hex::FromHex::from_hex(s) }
+            type Err = $crate::hashes::hex::Error;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                $crate::hashes::hex::FromHex::from_hex(s)
+            }
         }
 
         #[cfg(feature = "serde")]
+        #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
         impl $crate::serde::Serialize for $t {
             fn serialize<S: $crate::serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
                 if s.is_human_readable() {
@@ -127,6 +161,7 @@ macro_rules! impl_bytes_newtype {
         }
 
         #[cfg(feature = "serde")]
+        #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
         impl<'de> $crate::serde::Deserialize<'de> for $t {
             fn deserialize<D: $crate::serde::Deserializer<'de>>(d: D) -> Result<$t, D::Error> {
                 if d.is_human_readable() {
@@ -146,7 +181,7 @@ macro_rules! impl_bytes_newtype {
                             use $crate::serde::de::Unexpected;
 
                             if let Ok(hex) = core::str::from_utf8(v) {
-                                $crate::hex::FromHex::from_hex(hex).map_err(E::custom)
+                                $crate::hashes::hex::FromHex::from_hex(hex).map_err(E::custom)
                             } else {
                                 return Err(E::invalid_value(Unexpected::Bytes(v), &self));
                             }
@@ -156,7 +191,7 @@ macro_rules! impl_bytes_newtype {
                         where
                             E: $crate::serde::de::Error,
                         {
-                            $crate::hex::FromHex::from_hex(v).map_err(E::custom)
+                            $crate::hashes::hex::FromHex::from_hex(v).map_err(E::custom)
                         }
                     }
 

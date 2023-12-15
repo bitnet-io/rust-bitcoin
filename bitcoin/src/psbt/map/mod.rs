@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
 use crate::prelude::*;
+
 use crate::psbt::raw;
 
 mod global;
@@ -9,6 +10,7 @@ mod output;
 
 pub use self::input::{Input, PsbtSighashType};
 pub use self::output::Output;
+
 use super::serialize::Serialize;
 
 /// A trait that describes a PSBT key-value map.

@@ -1,3 +1,4 @@
+// Rust Bitcoin Library - Written by the rust-bitcoin developers.
 // SPDX-License-Identifier: CC0-1.0
 
 //! Provides type [`LockTime`] that implements the logic around nSequence/OP_CHECKSEQUENCEVERIFY.
@@ -6,14 +7,15 @@
 //! whether bit 22 of the `u32` consensus value is set.
 //!
 
-use core::convert::TryFrom;
 use core::fmt;
+use core::convert::TryFrom;
 
 #[cfg(all(test, mutate))]
 use mutagen::mutate;
 
 use crate::parse::impl_parse_str_from_int_infallible;
 use crate::prelude::*;
+
 #[cfg(doc)]
 use crate::relative;
 
@@ -26,6 +28,7 @@ use crate::relative;
 ///
 /// * [BIP 68 Relative lock-time using consensus-enforced sequence numbers](https://github.com/bitcoin/bips/blob/master/bip-0065.mediawiki)
 /// * [BIP 112 CHECKSEQUENCEVERIFY](https://github.com/bitcoin/bips/blob/master/bip-0112.mediawiki)
+#[allow(clippy::derive_ord_xor_partial_ord)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
@@ -60,8 +63,10 @@ impl LockTime {
     pub fn is_satisfied_by(&self, h: Height, t: Time) -> bool {
         if let Ok(true) = self.is_satisfied_by_height(h) {
             true
+        } else if let Ok(true) = self.is_satisfied_by_time(t) {
+            true
         } else {
-            matches!(self.is_satisfied_by_time(t), Ok(true))
+            false
         }
     }
 
@@ -164,12 +169,16 @@ impl LockTime {
 
 impl From<Height> for LockTime {
     #[inline]
-    fn from(h: Height) -> Self { LockTime::Blocks(h) }
+    fn from(h: Height) -> Self {
+        LockTime::Blocks(h)
+    }
 }
 
 impl From<Time> for LockTime {
     #[inline]
-    fn from(t: Time) -> Self { LockTime::Time(t) }
+    fn from(t: Time) -> Self {
+        LockTime::Time(t)
+    }
 }
 
 impl fmt::Display for LockTime {
@@ -209,29 +218,33 @@ impl Height {
     /// The minimum relative block height (0), can be included in any block.
     ///
     /// This is provided for consistency with Rust 1.41.1, newer code should use [`Height::MIN`].
-    #[deprecated(since = "0.31.0", note = "Use Self::MIN instead")]
     pub const fn min_value() -> Self { Self::MIN }
 
     /// The maximum relative block height.
     ///
     /// This is provided for consistency with Rust 1.41.1, newer code should use [`Height::MAX`].
-    #[deprecated(since = "0.31.0", note = "Use Self::MAX instead")]
     pub const fn max_value() -> Self { Self::MAX }
 
     /// Returns the inner `u16` value.
     #[inline]
-    pub fn value(self) -> u16 { self.0 }
+    pub fn value(self) -> u16 {
+        self.0
+    }
 }
 
 impl From<u16> for Height {
     #[inline]
-    fn from(value: u16) -> Self { Height(value) }
+    fn from(value: u16) -> Self {
+        Height(value)
+    }
 }
 
 impl_parse_str_from_int_infallible!(Height, u16, from);
 
 impl fmt::Display for Height {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 /// A relative lock time lock-by-blocktime value.
@@ -255,20 +268,20 @@ impl Time {
     /// The minimum relative block time.
     ///
     /// This is provided for consistency with Rust 1.41.1, newer code should use [`Time::MIN`].
-    #[deprecated(since = "0.31.0", note = "Use Self::MIN instead")]
     pub const fn min_value() -> Self { Self::MIN }
 
     /// The maximum relative block time.
     ///
     /// This is provided for consistency with Rust 1.41.1, newer code should use [`Time::MAX`].
-    #[deprecated(since = "0.31.0", note = "Use Self::MAX instead")]
     pub const fn max_value() -> Self { Self::MAX }
 
     /// Create a [`Time`] using time intervals where each interval is equivalent to 512 seconds.
     ///
     /// Encoding finer granularity of time for relative lock-times is not supported in Bitcoin.
     #[inline]
-    pub fn from_512_second_intervals(intervals: u16) -> Self { Time(intervals) }
+    pub fn from_512_second_intervals(intervals: u16) -> Self {
+        Time(intervals)
+    }
 
     /// Create a [`Time`] from seconds, converting the seconds into 512 second interval with ceiling
     /// division.
@@ -287,17 +300,21 @@ impl Time {
 
     /// Returns the inner `u16` value.
     #[inline]
-    pub fn value(self) -> u16 { self.0 }
+    pub fn value(self) -> u16 {
+        self.0
+    }
 }
 
 impl_parse_str_from_int_infallible!(Time, u16, from_512_second_intervals);
 
 impl fmt::Display for Time {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 /// Errors related to relative lock times.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[non_exhaustive]
 pub enum Error {
     /// Input time in seconds was too large to be encoded to a 16 bit 512 second interval.
@@ -310,26 +327,19 @@ pub enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Error::*;
-
         match *self {
-            IntegerOverflow(val) => write!(
-                f,
-                "{} seconds is too large to be encoded to a 16 bit 512 second interval",
-                val
-            ),
-            IncompatibleHeight(lock, height) =>
-                write!(f, "tried to satisfy lock {} with height: {}", lock, height),
-            IncompatibleTime(lock, time) =>
-                write!(f, "tried to satisfy lock {} with time: {}", lock, time),
+            Self::IntegerOverflow(val) => write!(f, "{} seconds is too large to be encoded to a 16 bit 512 second interval", val),
+            Self::IncompatibleHeight(lock, height) => write!(f, "tried to satisfy lock {} with height: {}", lock, height),
+            Self::IncompatibleTime(lock, time) => write!(f, "tried to satisfy lock {} with time: {}", lock, time),
         }
     }
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        use Error::*;
+        use self::Error::*;
 
         match *self {
             IntegerOverflow(_) | IncompatibleHeight(_, _) | IncompatibleTime(_, _) => None,
@@ -373,7 +383,7 @@ mod tests {
         assert!(!lock.is_implied_by(LockTime::from(Height::from(9))));
         assert!(lock.is_implied_by(LockTime::from(Height::from(10))));
         assert!(lock.is_implied_by(LockTime::from(Height::from(11))));
-    }
+   }
 
     #[test]
     fn time_correctly_implies() {

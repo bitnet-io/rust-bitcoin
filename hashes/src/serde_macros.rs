@@ -1,18 +1,31 @@
-// SPDX-License-Identifier: CC0-1.0
+// Bitcoin Hashes Library
+// Written in 2018 by
+//   Andrew Poelstra <apoelstra@wpsoftware.net>
+//
+// To the extent possible under law, the author(s) have dedicated all
+// copyright and related and neighboring rights to this software to
+// the public domain worldwide. This software is distributed without
+// any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication
+// along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+//
 
 //! Macros for serde trait implementations, and supporting code.
 //!
 
 /// Functions used by serde impls of all hashes.
 #[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
 pub mod serde_details {
-    use core::marker::PhantomData;
-    use core::str::FromStr;
-    use core::{fmt, ops, str};
+    use crate::Error;
 
-    use crate::FromSliceError;
+    use core::marker::PhantomData;
+    use core::{fmt, ops, str};
+    use core::str::FromStr;
     struct HexVisitor<ValueT>(PhantomData<ValueT>);
-    use serde::{de, Deserializer, Serializer};
+    use serde::{de, Serializer, Deserializer};
 
     impl<'de, ValueT> de::Visitor<'de> for HexVisitor<ValueT>
     where
@@ -32,7 +45,10 @@ pub mod serde_details {
             if let Ok(hex) = str::from_utf8(v) {
                 Self::Value::from_str(hex).map_err(E::custom)
             } else {
-                return Err(E::invalid_value(de::Unexpected::Bytes(v), &self));
+                return Err(E::invalid_value(
+                    de::Unexpected::Bytes(v),
+                    &self,
+                ));
             }
         }
 
@@ -82,7 +98,7 @@ pub mod serde_details {
         const N: usize;
 
         /// Helper function to turn a deserialized slice into the correct hash type.
-        fn from_slice_delegated(sl: &[u8]) -> Result<Self, FromSliceError>;
+        fn from_slice_delegated(sl: &[u8]) -> Result<Self, Error>;
 
         /// Do serde serialization.
         fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
@@ -108,11 +124,12 @@ pub mod serde_details {
 /// represents a newtype over a byte-slice over length `$len`.
 #[macro_export]
 #[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
 macro_rules! serde_impl(
     ($t:ident, $len:expr $(, $gen:ident: $gent:ident)*) => (
         impl<$($gen: $gent),*> $crate::serde_macros::serde_details::SerdeHash for $t<$($gen),*> {
             const N : usize = $len;
-            fn from_slice_delegated(sl: &[u8]) -> Result<Self, $crate::FromSliceError> {
+            fn from_slice_delegated(sl: &[u8]) -> Result<Self, $crate::Error> {
                 #[allow(unused_imports)]
                 use $crate::Hash as _;
                 $t::from_slice(sl)
@@ -135,6 +152,7 @@ macro_rules! serde_impl(
 /// Does an "empty" serde implementation for the configuration without serde feature.
 #[macro_export]
 #[cfg(not(feature = "serde"))]
+#[cfg_attr(docsrs, doc(cfg(not(feature = "serde"))))]
 macro_rules! serde_impl(
         ($t:ident, $len:expr $(, $gen:ident: $gent:ident)*) => ()
 );

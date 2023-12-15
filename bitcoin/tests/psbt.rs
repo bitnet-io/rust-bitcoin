@@ -5,11 +5,11 @@ use core::convert::TryFrom;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-use bitcoin::bip32::{Fingerprint, IntoDerivationPath, KeySource, Xpriv, Xpub};
+use bitcoin::bip32::{ExtendedPrivKey, ExtendedPubKey, Fingerprint, IntoDerivationPath, KeySource};
 use bitcoin::blockdata::opcodes::OP_0;
-use bitcoin::blockdata::{script, transaction};
+use bitcoin::blockdata::script;
 use bitcoin::consensus::encode::{deserialize, serialize_hex};
-use bitcoin::hex::FromHex;
+use bitcoin::hashes::hex::FromHex;
 use bitcoin::psbt::{Psbt, PsbtSighashType};
 use bitcoin::script::PushBytes;
 use bitcoin::secp256k1::{self, Secp256k1};
@@ -20,14 +20,17 @@ use bitcoin::{
 
 const NETWORK: Network = Network::Testnet;
 
-#[track_caller]
-fn hex_psbt(s: &str) -> Psbt {
-    let v: Vec<u8> = Vec::from_hex(s).expect("valid hex digits");
-    Psbt::deserialize(&v).expect("valid magic and valid separators")
+macro_rules! hex_script {
+    ($s:expr) => {
+        <ScriptBuf>::from_hex($s).unwrap()
+    };
 }
 
-#[track_caller]
-fn hex_script(s: &str) -> ScriptBuf { ScriptBuf::from_hex(s).expect("valid hex digits") }
+macro_rules! hex_psbt {
+    ($s:expr) => {
+        Psbt::deserialize(&<Vec<u8> as FromHex>::from_hex($s).unwrap())
+    };
+}
 
 #[test]
 fn bip174_psbt_workflow() {
@@ -38,7 +41,7 @@ fn bip174_psbt_workflow() {
     //
 
     let ext_priv = build_extended_private_key();
-    let ext_pub = Xpub::from_priv(&secp, &ext_priv);
+    let ext_pub = ExtendedPubKey::from_priv(&secp, &ext_priv);
     let parent_fingerprint = ext_pub.fingerprint();
 
     //
@@ -117,15 +120,15 @@ fn bip174_psbt_workflow() {
 }
 
 /// Attempts to build an extended private key from seed and also directly from a string.
-fn build_extended_private_key() -> Xpriv {
+fn build_extended_private_key() -> ExtendedPrivKey {
     // Strings from BIP 174 test vector.
     let extended_private_key = "tprv8ZgxMBicQKsPd9TeAdPADNnSyH9SSUUbTVeFszDE23Ki6TBB5nCefAdHkK8Fm3qMQR6sHwA56zqRmKmxnHk37JkiFzvncDqoKmPWubu7hDF";
     let seed = "cUkG8i1RFfWGWy5ziR11zJ5V4U4W3viSFCfyJmZnvQaUsd1xuF3T";
 
-    let xpriv = Xpriv::from_str(extended_private_key).unwrap();
+    let xpriv = ExtendedPrivKey::from_str(extended_private_key).unwrap();
 
     let sk = PrivateKey::from_wif(seed).unwrap();
-    let seeded = Xpriv::new_master(NETWORK, &sk.inner.secret_bytes()).unwrap();
+    let seeded = ExtendedPrivKey::new_master(NETWORK, &sk.inner.secret_bytes()).unwrap();
     assert_eq!(xpriv, seeded);
 
     xpriv
@@ -160,7 +163,7 @@ fn create_transaction() -> Transaction {
     }
 
     Transaction {
-        version: transaction::Version::TWO,
+        version: 2,
         lock_time: absolute::LockTime::ZERO,
         input: vec![
             TxIn {
@@ -185,13 +188,15 @@ fn create_transaction() -> Transaction {
         output: vec![
             TxOut {
                 value: Amount::from_str_in(output_0.amount, Denomination::Bitcoin)
-                    .expect("failed to parse amount"),
+                    .expect("failed to parse amount")
+                    .to_sat(),
                 script_pubkey: ScriptBuf::from_hex(output_0.script_pubkey)
                     .expect("failed to parse script"),
             },
             TxOut {
                 value: Amount::from_str_in(output_1.amount, Denomination::Bitcoin)
-                    .expect("failed to parse amount"),
+                    .expect("failed to parse amount")
+                    .to_sat(),
                 script_pubkey: ScriptBuf::from_hex(output_1.script_pubkey)
                     .expect("failed to parse script"),
             },
@@ -200,11 +205,11 @@ fn create_transaction() -> Transaction {
 }
 
 /// Creates the initial PSBT, called by the Creator. Verifies against BIP 174 test vector.
-#[track_caller]
 fn create_psbt(tx: Transaction) -> Psbt {
     // String from BIP 174 test vector.
     let expected_psbt_hex = include_str!("data/create_psbt_hex");
-    let expected_psbt: Psbt = hex_psbt(expected_psbt_hex);
+    let expected_psbt = hex_psbt!(expected_psbt_hex).unwrap();
+
     let psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
     assert_eq!(psbt, expected_psbt);
@@ -212,7 +217,6 @@ fn create_psbt(tx: Transaction) -> Psbt {
 }
 
 /// Updates `psbt` according to the BIP, returns the newly updated PSBT. Verifies against BIP 174 test vector.
-#[track_caller]
 fn update_psbt(mut psbt: Psbt, fingerprint: Fingerprint) -> Psbt {
     // Strings from BIP 174 test vector.
     let previous_tx_0 = include_str!("data/previous_tx_0_hex");
@@ -222,7 +226,7 @@ fn update_psbt(mut psbt: Psbt, fingerprint: Fingerprint) -> Psbt {
     let redeem_script_1 = "00208c2353173743b595dfb4a07b72ba8e42e3797da74e87fe7d9d7497e3b2028903";
     let witness_script = "522103089dc10c7ac6db54f91329af617333db388cead0c231f723379d1b99030b02dc21023add904f3d6dcf59ddb906b0dee23529b7ffb9ed50e5e86151926860221f0e7352ae";
 
-    // Public key and its derivation path (these are the child pubkeys for our `Xpriv`,
+    // Public key and its derivation path (these are the child pubkeys for our `ExtendedPrivKey`,
     // can be verified by deriving the key using this derivation path).
     let pk_path = vec![
         ("029583bf39ae0a609747ad199addd634fa6108559d6c5cd39b4c2183f1ab96e07f", "m/0h/0h/0h"),
@@ -234,14 +238,14 @@ fn update_psbt(mut psbt: Psbt, fingerprint: Fingerprint) -> Psbt {
     ];
 
     let expected_psbt_hex = include_str!("data/update_1_psbt_hex");
-    let expected_psbt: Psbt = hex_psbt(expected_psbt_hex);
+    let expected_psbt = hex_psbt!(expected_psbt_hex).unwrap();
 
     let mut input_0 = psbt.inputs[0].clone();
 
     let v = Vec::from_hex(previous_tx_1).unwrap();
     let tx: Transaction = deserialize(&v).unwrap();
     input_0.non_witness_utxo = Some(tx);
-    input_0.redeem_script = Some(hex_script(redeem_script_0));
+    input_0.redeem_script = Some(hex_script!(redeem_script_0));
     input_0.bip32_derivation = bip32_derivation(fingerprint, &pk_path, vec![0, 1]);
 
     let mut input_1 = psbt.inputs[1].clone();
@@ -250,8 +254,8 @@ fn update_psbt(mut psbt: Psbt, fingerprint: Fingerprint) -> Psbt {
     let tx: Transaction = deserialize(&v).unwrap();
     input_1.witness_utxo = Some(tx.output[1].clone());
 
-    input_1.redeem_script = Some(hex_script(redeem_script_1));
-    input_1.witness_script = Some(hex_script(witness_script));
+    input_1.redeem_script = Some(hex_script!(redeem_script_1));
+    input_1.witness_script = Some(hex_script!(witness_script));
     input_1.bip32_derivation = bip32_derivation(fingerprint, &pk_path, vec![2, 3]);
 
     psbt.inputs = vec![input_0, input_1];
@@ -289,10 +293,9 @@ fn bip32_derivation(
 }
 
 /// Does the second update according to the BIP, returns the newly updated PSBT. Verifies against BIP 174 test vector.
-#[track_caller]
 fn update_psbt_with_sighash_all(mut psbt: Psbt) -> Psbt {
     let expected_psbt_hex = include_str!("data/update_2_psbt_hex");
-    let expected_psbt: Psbt = hex_psbt(expected_psbt_hex);
+    let expected_psbt = hex_psbt!(expected_psbt_hex).unwrap();
 
     let ty = PsbtSighashType::from_str("SIGHASH_ALL").unwrap();
 
@@ -309,7 +312,7 @@ fn update_psbt_with_sighash_all(mut psbt: Psbt) -> Psbt {
 
 /// Verifies the keys in the test vector are valid for the extended private key and derivation path.
 fn parse_and_verify_keys(
-    ext_priv: &Xpriv,
+    ext_priv: &ExtendedPrivKey,
     sk_path: &[(&str, &str)],
 ) -> BTreeMap<PublicKey, PrivateKey> {
     let secp = &Secp256k1::new();
@@ -330,10 +333,9 @@ fn parse_and_verify_keys(
 }
 
 /// Does the first signing according to the BIP, returns the signed PSBT. Verifies against BIP 174 test vector.
-#[track_caller]
 fn signer_one_sign(psbt: Psbt, key_map: BTreeMap<bitcoin::PublicKey, PrivateKey>) -> Psbt {
     let expected_psbt_hex = include_str!("data/sign_1_psbt_hex");
-    let expected_psbt: Psbt = hex_psbt(expected_psbt_hex);
+    let expected_psbt = hex_psbt!(expected_psbt_hex).unwrap();
 
     let psbt = sign(psbt, key_map);
 
@@ -342,10 +344,9 @@ fn signer_one_sign(psbt: Psbt, key_map: BTreeMap<bitcoin::PublicKey, PrivateKey>
 }
 
 /// Does the second signing according to the BIP, returns the signed PSBT. Verifies against BIP 174 test vector.
-#[track_caller]
 fn signer_two_sign(psbt: Psbt, key_map: BTreeMap<bitcoin::PublicKey, PrivateKey>) -> Psbt {
     let expected_psbt_hex = include_str!("data/sign_2_psbt_hex");
-    let expected_psbt: Psbt = hex_psbt(expected_psbt_hex);
+    let expected_psbt = hex_psbt!(expected_psbt_hex).unwrap();
 
     let psbt = sign(psbt, key_map);
 
@@ -354,10 +355,9 @@ fn signer_two_sign(psbt: Psbt, key_map: BTreeMap<bitcoin::PublicKey, PrivateKey>
 }
 
 /// Does the combine according to the BIP, returns the combined PSBT. Verifies against BIP 174 test vector.
-#[track_caller]
 fn combine(mut this: Psbt, that: Psbt) -> Psbt {
     let expected_psbt_hex = include_str!("data/combine_psbt_hex");
-    let expected_psbt: Psbt = hex_psbt(expected_psbt_hex);
+    let expected_psbt = hex_psbt!(expected_psbt_hex).unwrap();
 
     this.combine(that).expect("failed to combine PSBTs");
 
@@ -367,10 +367,9 @@ fn combine(mut this: Psbt, that: Psbt) -> Psbt {
 
 /// Does the finalize step according to the BIP, returns the combined PSBT. Verifies against BIP 174
 /// test vector.
-#[track_caller]
 fn finalize(psbt: Psbt) -> Psbt {
     let expected_psbt_hex = include_str!("data/finalize_psbt_hex");
-    let expected_psbt: Psbt = hex_psbt(expected_psbt_hex);
+    let expected_psbt = hex_psbt!(expected_psbt_hex).unwrap();
 
     let psbt = finalize_psbt(psbt);
 
@@ -383,7 +382,7 @@ fn finalize(psbt: Psbt) -> Psbt {
 fn extract_transaction(psbt: Psbt) -> Transaction {
     let expected_tx_hex = include_str!("data/extract_tx_hex");
 
-    let tx = psbt.extract_tx_unchecked_fee_rate();
+    let tx = psbt.extract_tx();
 
     let got = serialize_hex(&tx);
     assert_eq!(got, expected_tx_hex);
@@ -392,13 +391,12 @@ fn extract_transaction(psbt: Psbt) -> Transaction {
 }
 
 /// Combines two PSBTs lexicographically according to the BIP. Verifies against BIP 174 test vector.
-#[track_caller]
 fn combine_lexicographically() {
     let psbt_1_hex = include_str!("data/lex_psbt_1_hex");
     let psbt_2_hex = include_str!("data/lex_psbt_2_hex");
 
     let expected_psbt_hex = include_str!("data/lex_combine_psbt_hex");
-    let expected_psbt: Psbt = hex_psbt(expected_psbt_hex);
+    let expected_psbt = hex_psbt!(expected_psbt_hex).unwrap();
 
     let v = Vec::from_hex(psbt_1_hex).unwrap();
     let mut psbt_1 = Psbt::deserialize(&v).expect("failed to deserialize psbt 1");

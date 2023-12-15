@@ -10,16 +10,16 @@ use core::{convert, fmt, mem};
 #[cfg(feature = "std")]
 use std::error;
 
-use hashes::{sha256, siphash24, Hash};
-use internals::impl_array_newtype;
+use bitcoin_internals::impl_array_newtype;
 
 use crate::consensus::encode::{self, Decodable, Encodable, VarInt};
+use crate::hashes::{sha256, siphash24, Hash};
 use crate::internal_macros::{impl_bytes_newtype, impl_consensus_encoding};
 use crate::prelude::*;
 use crate::{block, io, Block, BlockHash, Transaction};
 
 /// A BIP-152 error
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug, Copy, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum Error {
     /// An unknown version number was used.
@@ -38,6 +38,7 @@ impl fmt::Display for Error {
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         use self::Error::*;
@@ -73,18 +74,20 @@ impl convert::AsRef<Transaction> for PrefilledTransaction {
 
 impl Encodable for PrefilledTransaction {
     #[inline]
-    fn consensus_encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
-        Ok(VarInt::from(self.idx).consensus_encode(w)? + self.tx.consensus_encode(w)?)
+    fn consensus_encode<S: io::Write + ?Sized>(&self, mut s: &mut S) -> Result<usize, io::Error> {
+        Ok(VarInt(self.idx as u64).consensus_encode(&mut s)? + self.tx.consensus_encode(&mut s)?)
     }
 }
 
 impl Decodable for PrefilledTransaction {
     #[inline]
-    fn consensus_decode<R: io::Read + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
-        let idx = VarInt::consensus_decode(r)?.0;
+    fn consensus_decode<D: io::Read + ?Sized>(
+        mut d: &mut D,
+    ) -> Result<PrefilledTransaction, encode::Error> {
+        let idx = VarInt::consensus_decode(&mut d)?.0;
         let idx = u16::try_from(idx)
             .map_err(|_| encode::Error::ParseFailed("BIP152 prefilled tx index out of bounds"))?;
-        let tx = Transaction::consensus_decode(r)?;
+        let tx = Transaction::consensus_decode(&mut d)?;
         Ok(PrefilledTransaction { idx, tx })
     }
 }
@@ -129,15 +132,15 @@ impl ShortId {
 
 impl Encodable for ShortId {
     #[inline]
-    fn consensus_encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
-        self.0.consensus_encode(w)
+    fn consensus_encode<S: io::Write + ?Sized>(&self, s: &mut S) -> Result<usize, io::Error> {
+        self.0.consensus_encode(s)
     }
 }
 
 impl Decodable for ShortId {
     #[inline]
-    fn consensus_decode<R: io::Read + ?Sized>(r: &mut R) -> Result<ShortId, encode::Error> {
-        Ok(ShortId(Decodable::consensus_decode(r)?))
+    fn consensus_decode<D: io::Read + ?Sized>(d: &mut D) -> Result<ShortId, encode::Error> {
+        Ok(ShortId(Decodable::consensus_decode(d)?))
     }
 }
 
@@ -258,13 +261,13 @@ impl Encodable for BlockTransactionsRequest {
     ///
     /// Panics if the index overflows [`u64::MAX`]. This happens when [`BlockTransactionsRequest::indexes`]
     /// contains an entry with the value [`u64::MAX`] as `u64` overflows during differential encoding.
-    fn consensus_encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
-        let mut len = self.block_hash.consensus_encode(w)?;
+    fn consensus_encode<S: io::Write + ?Sized>(&self, mut s: &mut S) -> Result<usize, io::Error> {
+        let mut len = self.block_hash.consensus_encode(&mut s)?;
         // Manually encode indexes because they are differentially encoded VarInts.
-        len += VarInt(self.indexes.len() as u64).consensus_encode(w)?;
+        len += VarInt(self.indexes.len() as u64).consensus_encode(&mut s)?;
         let mut last_idx = 0;
         for idx in &self.indexes {
-            len += VarInt(*idx - last_idx).consensus_encode(w)?;
+            len += VarInt(*idx - last_idx).consensus_encode(&mut s)?;
             last_idx = *idx + 1; // can panic here
         }
         Ok(len)
@@ -272,12 +275,14 @@ impl Encodable for BlockTransactionsRequest {
 }
 
 impl Decodable for BlockTransactionsRequest {
-    fn consensus_decode<R: io::Read + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
+    fn consensus_decode<D: io::Read + ?Sized>(
+        mut d: &mut D,
+    ) -> Result<BlockTransactionsRequest, encode::Error> {
         Ok(BlockTransactionsRequest {
-            block_hash: BlockHash::consensus_decode(r)?,
+            block_hash: BlockHash::consensus_decode(&mut d)?,
             indexes: {
                 // Manually decode indexes because they are differentially encoded VarInts.
-                let nb_indexes = VarInt::consensus_decode(r)?.0 as usize;
+                let nb_indexes = VarInt::consensus_decode(&mut d)?.0 as usize;
 
                 // Since the number of indices ultimately represent transactions,
                 // we can limit the number of indices to the maximum number of
@@ -295,14 +300,14 @@ impl Decodable for BlockTransactionsRequest {
                 let mut indexes = Vec::with_capacity(nb_indexes);
                 let mut last_index: u64 = 0;
                 for _ in 0..nb_indexes {
-                    let differential: VarInt = Decodable::consensus_decode(r)?;
+                    let differential: VarInt = Decodable::consensus_decode(&mut d)?;
                     last_index = match last_index.checked_add(differential.0) {
-                        Some(i) => i,
+                        Some(r) => r,
                         None => return Err(encode::Error::ParseFailed("block index overflow")),
                     };
                     indexes.push(last_index);
                     last_index = match last_index.checked_add(1) {
-                        Some(i) => i,
+                        Some(r) => r,
                         None => return Err(encode::Error::ParseFailed("block index overflow")),
                     };
                 }
@@ -314,8 +319,7 @@ impl Decodable for BlockTransactionsRequest {
 
 /// A transaction index is requested that is out of range from the
 /// corresponding block.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
+#[derive(Clone, PartialEq, Eq, Debug, Copy, PartialOrd, Ord, Hash)]
 pub struct TxIndexOutOfRangeError(u64);
 
 impl fmt::Display for TxIndexOutOfRangeError {
@@ -330,9 +334,7 @@ impl fmt::Display for TxIndexOutOfRangeError {
 }
 
 #[cfg(feature = "std")]
-impl error::Error for TxIndexOutOfRangeError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
-}
+impl error::Error for TxIndexOutOfRangeError {}
 
 /// A [BlockTransactions] structure is used to provide some of the transactions
 /// in a block, as requested.
@@ -370,21 +372,18 @@ impl BlockTransactions {
 
 #[cfg(test)]
 mod test {
-    use hex::FromHex;
-
     use super::*;
     use crate::blockdata::locktime::absolute;
-    use crate::blockdata::transaction;
     use crate::consensus::encode::{deserialize, serialize};
     use crate::hash_types::TxMerkleNode;
+    use crate::hashes::hex::FromHex;
     use crate::{
-        Amount, CompactTarget, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid,
-        Witness,
+        CompactTarget, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, Witness,
     };
 
     fn dummy_tx(nonce: &[u8]) -> Transaction {
         Transaction {
-            version: transaction::Version::ONE,
+            version: 1,
             lock_time: absolute::LockTime::from_consensus(2),
             input: vec![TxIn {
                 previous_output: OutPoint::new(Txid::hash(nonce), 0),
@@ -392,7 +391,7 @@ mod test {
                 sequence: Sequence(1),
                 witness: Witness::new(),
             }],
-            output: vec![TxOut { value: Amount::ONE_SAT, script_pubkey: ScriptBuf::new() }],
+            output: vec![TxOut { value: 1, script_pubkey: ScriptBuf::new() }],
         }
     }
 

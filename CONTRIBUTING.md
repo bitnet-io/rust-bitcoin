@@ -21,7 +21,6 @@ changes to this document in a pull request.
   * [Formatting](#formatting)
   * [MSRV](#msrv)
   * [Naming conventions](#naming-conventions)
-  * [Upgrading dependencies](#upgrading-dependencies)
   * [Unsafe code](#unsafe-code)
 - [Security](#security)
 - [Testing](#testing)
@@ -150,7 +149,7 @@ grammar fixes.
 
 Pull request merge requirements:
 - all CI test should pass,
-- at least two "accepts"/ACKs from the repository maintainers (see "refactor carve-out").
+- at least two "accepts"/ACKs from the repository maintainers
 - no reasonable "rejects"/NACKs from anybody who reviewed the code.
 
 Current list of the project maintainers:
@@ -164,36 +163,16 @@ Current list of the project maintainers:
 - [Riccardo Casatta](https://github.com/RCasatta)
 - [Tobin Harding](https://github.com/tcharding)
 
-#### Refactor carve-out
-
-The repository is going through heavy refactoring and "trivial" API redesign
-(eg, rename `Foo::empty` to `Foo::new`) as we push towards API stabilization. As
-such reviewers are either bored or overloaded with notifications, hence we have
-created a carve out to the 2-ACK rule.
-
-A PR may be considered for merge if it has a single ACK and has sat open for at
-least two weeks with no comments, questions, or NACKs.
-
-#### One ACK carve-out
-
-We reserve the right to merge PRs with a single ACK [0], at any time, if they match
-any of the following conditions:
-
-1. PR only touches CI i.e, only changes any of the `test.sh` scripts and/or
-   stuff in `.github/workflows`.
-2. Non-content changing documentation fixes i.e., grammar/typos, spelling, full
-   stops, capital letters. Any change with more substance must still get two
-   ACKs.
-3. Code moves that do not change the API e.g., moving error types to a private
-   submodule and re-exporting them from the original module. Must not include
-   any code changes except to import paths. This rule is more restrictive than
-   the refactor carve-out. It requires absolutely no change to the public API.
-
-[0] - Obviously author and ACK'er must not be the same person.
 
 ## Coding conventions
 
 Library reflects Bitcoin Core approach whenever possible.
+
+### Formatting
+
+The repository currently uses `rustfmt` (WIP, some directories are excluded). We use nightly
+features so to run the formatter use `cargo +nightly fmt`. (Remember that your editor may be
+configured to fmt with a stable toolchain, this will result in many unwanted changes.)
 
 ### Naming conventions
 
@@ -202,18 +181,6 @@ in Bitcoin Core, with the following exceptions:
 - the case should follow Rust standards (i.e. PascalCase for types and
   snake_case for fields and variants);
 - omit `C`-prefixes.
-
-### Upgrading dependencies
-
-If your change requires a dependency to be upgraded you must do the following:
-
-1. Modify `Cargo.toml`
-2. Copy `Cargo-minimal.lock` to `Cargo.lock`
-3. Trigger cargo to update the required entries in the lock file - use `--precise` using the minimum version number that works
-4. Test your change
-5. Copy `Cargo.lock` to `Cargo-minimal.lock`
-6. Update `Cargo-recent.lock` if it is also behind
-7. Commit both lock files together with `Cargo.toml` and your code changes
 
 ### Unsafe code
 
