@@ -494,7 +494,7 @@ impl<V: NetworkValidation> Address<V> {
             Network::Testnet | Network::Signet | Network::Regtest => SCRIPT_ADDRESS_PREFIX_TEST,
         };
         let hrp = match self.network() {
-            Network::Bitcoin => hrp::BTC,
+            Network::Bitcoin => hrp::BC,
             Network::Testnet | Network::Signet => hrp::TB,
             Network::Regtest => hrp::BCRT,
         };
