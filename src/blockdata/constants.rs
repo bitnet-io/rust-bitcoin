@@ -87,7 +87,7 @@ fn bitcoin_genesis_tx() -> Transaction {
     let script_bytes = hex!("04594c39e7eacaa78d2bb0073725c1b75187a1a5b12a8e78d5222c9efacd7e37bb1455a582c2f6b2ac6b60d2899376780367f2a9aad91d42f23cd9f60663575bad");
     let out_script =
         script::Builder::new().push_slice(script_bytes).push_opcode(OP_CHECKSIG).into_script();
-    ret.output.push(TxOut { value: Amount::from_sat(88 * 100_000_000), script_pubkey: out_script });
+    ret.output.push(TxOut { value: Amount::from_sat(50 * 100_000_000), script_pubkey: out_script });
 
     // end
     ret
