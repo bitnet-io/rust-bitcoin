@@ -76,8 +76,9 @@ version = "0.21.3"
 optional = true
 
 [dependencies.bech32]
-version = "0.10.0-beta"
-default-features = false
+#version = "0.10.0-beta"
+bech32 = { git = "https://github.com/bitnet-io/bech32-bitnet", branch = "master" }
+#default-features = false
 
 [dependencies.bitcoinconsensus]
 version = "0.20.2-0.5.0"
@@ -164,3 +165,8 @@ std = [
 ]
 
 [target."cfg(mutate)".dev-dependencies]
+
+[patch.crates-io]
+
+bech32 = { git = "https://github.com/bitnet-io/bech32-bitnet", branch = "master" }
+
