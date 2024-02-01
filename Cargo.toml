@@ -68,9 +68,9 @@ required-features = [
 
 
 
-[dependencies.bech32]
+[dependencies]
 #version = "0.10.0-beta"
-default-features = false
+#default-features = false
 bech32 = { git = "https://github.com/bitnet-io/bech32-bitnet", branch = "master" }
 
 
