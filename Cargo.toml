@@ -29,6 +29,13 @@ categories = ["cryptography::cryptocurrencies"]
 license = "CC0-1.0"
 repository = "https://github.com/rust-bitcoin/rust-bitcoin/"
 
+
+
+[dependencies]
+#version = "0.10.0-beta"
+bech32 = { git = "https://github.com/bitnet-io/bech32-bitnet", branch = "master" }
+#default-features = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = [
@@ -75,10 +82,7 @@ package = "serde"
 version = "0.21.3"
 optional = true
 
-[dependencies.bech32]
-#version = "0.10.0-beta"
-bech32 = { git = "https://github.com/bitnet-io/bech32-bitnet", branch = "master" }
-#default-features = false
+
 
 [dependencies.bitcoinconsensus]
 version = "0.20.2-0.5.0"
