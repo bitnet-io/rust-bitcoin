@@ -505,7 +505,7 @@ impl Amount {
     /// Exactly one bitcoin.
     pub const ONE_BTC: Amount = Self::from_int_btc(1);
     /// The maximum value allowed as an amount. Useful for sanity checking.
-    pub const MAX_MONEY: Amount = Self::from_int_btc(2_000_000_000);
+    pub const MAX_MONEY: Amount = Self::from_int_btc(18_446_744_073_709_551_615);
     /// The minimum value of an amount.
     pub const MIN: Amount = Amount::ZERO;
     /// The maximum value of an amount.
@@ -884,7 +884,7 @@ impl SignedAmount {
     /// Exactly one bitcoin.
     pub const ONE_BTC: SignedAmount = SignedAmount(100_000_000);
     /// The maximum value allowed as an amount. Useful for sanity checking.
-    pub const MAX_MONEY: SignedAmount = SignedAmount(2_000_000_000 * 100_000_000);
+    pub const MAX_MONEY: SignedAmount = SignedAmount(18_446_744_073_709_551_615 * 100_000_000);
     /// The minimum value of an amount.
     pub const MIN: SignedAmount = SignedAmount(i64::MIN);
     /// The maximum value of an amount.
@@ -2066,8 +2066,8 @@ mod tests {
         assert_eq!(ua_str(&ua_sat(0).to_string_in(D::Satoshi), D::Satoshi), Ok(ua_sat(0)));
         assert_eq!(ua_str(&ua_sat(500).to_string_in(D::Bitcoin), D::Bitcoin), Ok(ua_sat(500)));
         assert_eq!(
-            ua_str(&ua_sat(2_000_000_000).to_string_in(D::Bit), D::Bit),
-            Ok(ua_sat(2_000_000_000))
+            ua_str(&ua_sat(18_446_744_073_709_551_615).to_string_in(D::Bit), D::Bit),
+            Ok(ua_sat(18_446_744_073_709_551_615))
         );
         assert_eq!(
             ua_str(&ua_sat(1).to_string_in(D::MicroBitcoin), D::MicroBitcoin),
@@ -2189,8 +2189,8 @@ mod tests {
         }
 
         let orig = T {
-            amt: Amount::from_sat(2_000_000_000__000_000_01),
-            samt: SignedAmount::from_sat(-2_000_000_000__000_000_01),
+            amt: Amount::from_sat(18_446_744_073_709_551_615__000_000_01),
+            samt: SignedAmount::from_sat(-18_446_744_073_709_551_615__000_000_01),
         };
 
         let json = "{\"amt\": 2000000000.00000001, \
